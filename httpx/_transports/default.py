@@ -234,6 +234,11 @@ class HTTPTransport(BaseTransport):
         assert isinstance(request.stream, SyncByteStream)
         import httpcore
 
+        # Make a per-send copy of the extensions, so anything the pool
+        # writes into the mapping while handling this request stays private
+        # to this single send.
+        extensions = dict(request.extensions)
+
         req = httpcore.Request(
             method=request.method,
             url=httpcore.URL(
@@ -244,7 +249,7 @@ class HTTPTransport(BaseTransport):
             ),
             headers=request.headers.raw,
             content=request.stream,
-            extensions=request.extensions,
+            extensions=extensions,
         )
         with map_httpcore_exceptions():
             resp = self._pool.handle_request(req)
@@ -378,6 +383,11 @@ class AsyncHTTPTransport(AsyncBaseTransport):
         assert isinstance(request.stream, AsyncByteStream)
         import httpcore
 
+        # Make a per-send copy of the extensions, so anything the pool
+        # writes into the mapping while handling this request stays private
+        # to this single send.
+        extensions = dict(request.extensions)
+
         req = httpcore.Request(
             method=request.method,
             url=httpcore.URL(
@@ -388,7 +398,7 @@ class AsyncHTTPTransport(AsyncBaseTransport):
             ),
             headers=request.headers.raw,
             content=request.stream,
-            extensions=request.extensions,
+            extensions=extensions,
         )
         with map_httpcore_exceptions():
             resp = await self._pool.handle_async_request(req)

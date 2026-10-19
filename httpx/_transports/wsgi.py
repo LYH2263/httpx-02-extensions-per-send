@@ -89,6 +89,11 @@ class WSGITransport(BaseTransport):
         self.wsgi_errors = wsgi_errors
 
     def handle_request(self, request: Request) -> Response:
+        # Keep the extensions mapping private to this single send, so an
+        # application that can reach the request cannot leak state onto
+        # later sends or back onto the caller's mapping.
+        request.extensions = dict(request.extensions)
+
         request.read()
         wsgi_input = io.BytesIO(request.content)
 

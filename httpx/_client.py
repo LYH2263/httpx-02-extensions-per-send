@@ -590,6 +590,29 @@ class BaseClient:
             )
             request.extensions = dict(**request.extensions, timeout=timeout.as_dict())
 
+    def _build_send_request(self, request: Request) -> Request:
+        """
+        Return the request instance that should be handed to the transport
+        for a single send.
+
+        Each send is given its own request, with its own outer copy of the
+        extensions mapping. This ensures that anything written into the
+        mapping while a send is in progress (eg. internal trace state added
+        by the transport) cannot leak back onto the caller's request, or
+        onto later sends such as redirect hops, authentication challenge
+        re-sends, or requests handled by a different mounted transport.
+
+        Only the outer mapping is copied. The values, including the 'trace'
+        callable, remain the exact objects the caller provided.
+        """
+        return Request(
+            method=request.method,
+            url=request.url,
+            headers=request.headers,
+            stream=request.stream,
+            extensions=request.extensions,
+        )
+
 
 class Client(BaseClient):
     """
@@ -1010,8 +1033,14 @@ class Client(BaseClient):
                 "Attempted to send an async request with a sync Client instance."
             )
 
+        # Give this send its own request with its own copy of the
+        # extensions mapping. The transport (and anything below it) may
+        # modify the mapping while handling the send, and those changes
+        # must not leak back onto the caller's request, or onto later sends.
+        send_request = self._build_send_request(request)
+
         with request_context(request=request):
-            response = transport.handle_request(request)
+            response = transport.handle_request(send_request)
 
         assert isinstance(response.stream, SyncByteStream)
 
@@ -1726,8 +1755,14 @@ class AsyncClient(BaseClient):
                 "Attempted to send a sync request with an AsyncClient instance."
             )
 
+        # Give this send its own request with its own copy of the
+        # extensions mapping. The transport (and anything below it) may
+        # modify the mapping while handling the send, and those changes
+        # must not leak back onto the caller's request, or onto later sends.
+        send_request = self._build_send_request(request)
+
         with request_context(request=request):
-            response = await transport.handle_async_request(request)
+            response = await transport.handle_async_request(send_request)
 
         assert isinstance(response.stream, AsyncByteStream)
         response.request = request
